@@ -32,6 +32,10 @@ stages:
           - checkout: self
             displayName: "Checkout Repository"
 
+          # Fix gradlew permissions before building
+          - script: chmod +x ./gradlew
+            displayName: "Make gradlew executable"
+
           - task: Cache@2
             inputs:
               key: 'gradle | "$(Agent.OS)" | **/*.gradle*'
@@ -124,11 +128,11 @@ stages:
                 }
 
                 # Obter FQDN do banco de dados
-                DB_FQDN=$(az container show --resource-group $(RESOURCE_GROUP) --name aci-db-mottu-spot --query ipAddress.fqdn -o tsv)
+                DB_FQDN=$(az container show --resource-group $(RESOURCE_GROUP) --name aci-db-humanamente --query ipAddress.fqdn -o tsv)
 
                 # Nome do container e DNS
-                APP_CONTAINER_NAME="aci-app-mottu-spot"
-                APP_DNS_LABEL="aci-app-mottu-spot"
+                APP_CONTAINER_NAME="aci-app-humanamente"
+                APP_DNS_LABEL="aci-app-humanamente"
 
                 # Excluir container anterior (para liberar DNS)
                 echo "Cleaning up previous container if it exists..."
