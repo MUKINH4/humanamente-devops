@@ -1,0 +1,181 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  - group: humanamente-variables
+  - name: GRADLE_USER_HOME
+    value: $(Pipeline.Workspace)/.gradle
+  - name: TAG
+    value: "$(Build.BuildId)"
+  - name: AZURE_SERVICE_CONNECTION
+    value: "HumanamenteAzureConnection"
+  - name: RESOURCE_GROUP
+    value: "rg-humanamente"
+
+stages:
+  # =============================================
+  # STAGE 1: CI - Build e Testes
+  # =============================================
+  - stage: Build
+    displayName: CI (build & tests)
+    jobs:
+      - job: gradleBuild
+        pool:
+          vmImage: ubuntu-latest
+
+        steps:
+          - checkout: self
+            displayName: "Checkout Repository"
+
+          - task: Cache@2
+            inputs:
+              key: 'gradle | "$(Agent.OS)" | **/*.gradle*'
+              restoreKeys: |
+                gradle | "$(Agent.OS)"
+                gradle
+              path: $(GRADLE_USER_HOME)
+            displayName: Configure gradle caching
+
+          - task: Gradle@4
+            inputs:
+              gradleWrapperFile: "gradlew"
+              tasks: "build"
+              options: "--build-cache"
+              publishJUnitResults: true
+              testResultsFiles: "**/TEST-*.xml"
+              javaHomeOption: "JDKVersion"
+              sonarQubeRunAnalysis: false
+
+          - script: ./gradlew --stop
+            displayName: Gradlew stop
+
+          - task: CopyFiles@2
+            displayName: "Copy Files to artifact staging directory"
+            inputs:
+              SourceFolder: "$(System.DefaultWorkingDirectory)"
+              Contents: "**/build/libs/*SNAPSHOT.jar"
+              TargetFolder: $(Build.ArtifactStagingDirectory)
+
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: drop
+
+      - job: BuildAndPushImage
+        displayName: Build and push docker image
+        pool:
+          vmImage: ubuntu-latest
+        dependsOn: gradleBuild
+        condition: succeeded()
+        steps:
+          - task: Docker@2
+            inputs:
+              command: login
+              containerRegistry: humanamente-registry
+          - task: Docker@2
+            inputs:
+              command: buildAndPush
+              repository: $(IMAGE_NAME)
+              tags: |
+                latest
+                $(Build.BuildId)
+
+  # =============================================
+  # STAGE 2: CD - Deploy
+  # =============================================
+  - stage: Deploy
+    displayName: "CD - Deploy to Azure Container Instances"
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - job: Deploy
+        displayName: "Deploy App to ACI"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: none
+
+          - task: AzureCLI@2
+            displayName: "Deploy Application to ACI"
+            inputs:
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                echo "Using resource group: $(RESOURCE_GROUP)"
+
+                # Obter credenciais do ACR
+                ACR_USERNAME=$(az acr credential show -n $(ACR_NAME) --query username -o tsv)
+                ACR_PASSWORD=$(az acr credential show -n $(ACR_NAME) --query "passwords[0].value" -o tsv)
+
+                # Verificar se a imagem existe no ACR
+                echo "Verificando imagens disponíveis no ACR..."
+                az acr repository list --name $(ACR_NAME) --output table
+
+                echo "Verificando tags da imagem $(IMAGE_NAME)..."
+                az acr repository show-tags --name $(ACR_NAME) --repository $(IMAGE_NAME) --output table || {
+                  echo "ERROR: Repository $(IMAGE_NAME) not found in ACR"
+                  exit 1
+                }
+
+                # Obter FQDN do banco de dados
+                DB_FQDN=$(az container show --resource-group $(RESOURCE_GROUP) --name aci-db-mottu-spot --query ipAddress.fqdn -o tsv)
+
+                # Nome do container e DNS
+                APP_CONTAINER_NAME="aci-app-mottu-spot"
+                APP_DNS_LABEL="aci-app-mottu-spot"
+
+                # Excluir container anterior (para liberar DNS)
+                echo "Cleaning up previous container if it exists..."
+                az container delete --resource-group "$(RESOURCE_GROUP)" --name "$APP_CONTAINER_NAME" --yes || true
+                sleep 10
+
+                # Usar a tag do BuildId para garantir que a imagem existe
+                IMAGE_TAG="$(Build.BuildId)"
+                APP_IMAGE="$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$IMAGE_TAG"
+                echo "Deploying application container: $APP_CONTAINER_NAME"
+                echo "Image: $APP_IMAGE"
+
+                az container create \
+                  --resource-group "$(RESOURCE_GROUP)" \
+                  --name "$APP_CONTAINER_NAME" \
+                  --image "$APP_IMAGE" \
+                  --cpu 1 --memory 1.5 \
+                  --registry-login-server "$(ACR_NAME).azurecr.io" \
+                  --registry-username "$ACR_USERNAME" \
+                  --registry-password "$ACR_PASSWORD" \
+                  --environment-variables \
+                    SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL}" \
+                    SPRING_DATASOURCE_USERNAME="$(POSTGRES_USER)" \
+                    SPRING_DATASOURCE_PASSWORD="$(POSTGRES_PASSWORD)" \
+                    JAVA_OPTS="-Xmx512m -Xms256m -Dspring.profiles.active=prod" \
+                    SPRING_FLYWAY_ENABLED=true \
+                    SPRING_FLYWAY_BASELINE_ON_MIGRATE=true \
+                    SPRING_JPA_HIBERNATE_DDL_AUTO=none \
+                    SPRING_JPA_SHOW_SQL=true \
+                    GROQ_API_KEY=$(GROQ_API_KEY) \
+                    SERVER_ERROR_INCLUDE_STACKTRACE=always \
+                    SERVER_ERROR_INCLUDE_MESSAGE=always \
+                  --ports 8080 \
+                  --os-type Linux \
+                  --dns-name-label "$APP_DNS_LABEL" \
+                  --restart-policy always
+
+                # Aguardar a aplicação iniciar
+                echo "⏳ Aguardando a aplicação iniciar..."
+                sleep 60
+
+                # Verificar se a aplicação está rodando
+                APP_FQDN=$(az container show --resource-group $(RESOURCE_GROUP) --name "$APP_CONTAINER_NAME" --query ipAddress.fqdn -o tsv)
+                APP_URL="http://$APP_FQDN:8080"
+
+                echo "✅ Deploy concluído!"
+                echo "📊 Banco de Dados: $DB_FQDN:5432"
+                echo "🚀 Aplicação: $APP_URL"
+                echo "🔑 Login: admin / admin123"
+                echo "📋 Para verificar logs: az container logs --resource-group $(RESOURCE_GROUP) --name $APP_CONTAINER_NAME"
