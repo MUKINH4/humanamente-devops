@@ -170,7 +170,7 @@ stages:
                   --os-type Linux \
                   --dns-name-label "$APP_DNS_LABEL" \
                   --location "$(AZURE_LOCATION)" \
-                  --restart-policy always
+                  --restart-policy never
 
                 # Aguardar a aplicação iniciar
                 echo "⏳ Aguardando a aplicação iniciar..."
