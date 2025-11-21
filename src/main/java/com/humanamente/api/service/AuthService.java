@@ -4,7 +4,6 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -57,42 +56,31 @@ public class AuthService {
     }
 
     public TokenDTO login(LoginRequest credentials) {
-        try {
-            if (credentials == null) {
-                log.warn("Tentativa de login com credenciais nulas");
-                throw new IllegalArgumentException("Credenciais não podem ser nulas");
-            }
-            
-            if (credentials.email() == null || credentials.email().isEmpty()) {
-                log.warn("Tentativa de login com email vazio");
-                throw new IllegalArgumentException("Email é obrigatório");
-            }
-            
-            if (credentials.password() == null || credentials.password().isEmpty()) {
-                log.warn("Tentativa de login com senha vazia para: {}", credentials.email());
-                throw new IllegalArgumentException("Senha é obrigatória");
-            }
-            
-            log.info("Tentativa de login para: {}", credentials.email());
-            
-            var authentication = new UsernamePasswordAuthenticationToken(credentials.email(), credentials.password());
-            User user = (User) authManager.authenticate(authentication).getPrincipal();
-            
-            log.info("Login bem-sucedido para: {}", user.getEmail());
-            
-            TokenDTO token = tokenService.createToken(user);
-            
-            return token;
-            
-        } catch (IllegalArgumentException e) {
-            log.warn("Validação falhou no login: {}", e.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
-        } catch (AuthenticationException ex) {
-            log.warn("Falha na autenticação para: {} - Erro: {}", credentials.email(), ex.getMessage());
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Email ou senha inválidos");
-        } catch (Exception e) {
-            log.error("Erro inesperado durante login: {}", e.getMessage(), e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Erro ao realizar login");
+        if (credentials == null) {
+            log.warn("Tentativa de login com credenciais nulas");
+            throw new IllegalArgumentException("Credenciais não podem ser nulas");
         }
+        
+        if (credentials.email() == null || credentials.email().isEmpty()) {
+            log.warn("Tentativa de login com email vazio");
+            throw new IllegalArgumentException("Email é obrigatório");
+        }
+        
+        if (credentials.password() == null || credentials.password().isEmpty()) {
+            log.warn("Tentativa de login com senha vazia para: {}", credentials.email());
+            throw new IllegalArgumentException("Senha é obrigatória");
+        }
+        
+        log.info("Tentativa de login para: {}", credentials.email());
+        
+        var authentication = new UsernamePasswordAuthenticationToken(credentials.email(), credentials.password());
+        User user = (User) authManager.authenticate(authentication).getPrincipal();
+        
+        log.info("Login bem-sucedido para: {}", user.getEmail());
+        
+        TokenDTO token = tokenService.createToken(user);
+        
+        return token;
+
     }
 }

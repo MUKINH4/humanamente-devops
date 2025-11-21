@@ -1,0 +1,1 @@
+ az group delete --name rg-humanamente --yes --no-wait

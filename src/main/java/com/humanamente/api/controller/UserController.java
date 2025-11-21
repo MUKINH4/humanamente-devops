@@ -59,10 +59,14 @@ public class UserController {
     public ResponseEntity<ApiResponse<User>> findById(@PathVariable String id) {
         try {
             User user = userService.findById(id);
+            
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiResponse<>(messageService.getMessage("error.user.not.found"), null));
+            }
+
             return ResponseEntity.ok(new ApiResponse<>(messageService.getMessage("success.user.found"), user));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new ApiResponse<>(e.getMessage(), null));
+
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiResponse<>(messageService.getMessage("error.internal"), null));
@@ -101,7 +105,18 @@ public class UserController {
             @AuthenticationPrincipal User authenticatedUser) {
         try {
             User oldUser = userService.findById(id);
+
+            if (oldUser == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiResponse<>(messageService.getMessage("error.user.not.found"), null));
+            }
+
             String oldEmail = oldUser.getEmail();
+
+            if (!authenticatedUser.getId().equals(id)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiResponse<>(messageService.getMessage("error.user.unauthorized"), null));
+            }
             
             User updated = userService.update(id, userEdit);
             
