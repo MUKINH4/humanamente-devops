@@ -41,7 +41,6 @@ services:
       - "SPRING_RABBITMQ_PASSWORD=humanamente"
       - "GROQ_API_KEY=${GROQ_API_KEY}"
       - "JWT_SECRET=${JWT_SECRET}"
-      - "JWT_EXPIRATION=${JWT_EXPIRATION}"
     restart: always
     depends_on:
       postgres:

@@ -22,9 +22,6 @@ public class TokenService {
     @Value("${jwt.secret:minha-chave-secreta-super-segura-123456}")
     private String secret;
 
-    @Value("${jwt.expiration:3600}")
-    private Long expirationTime;
-
     public TokenDTO createToken(User user) {
         Instant expirationAt = LocalDateTime.now().plusMinutes(60).toInstant(ZoneOffset.ofHours(-3));
         
