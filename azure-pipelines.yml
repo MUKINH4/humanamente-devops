@@ -181,7 +181,6 @@ stages:
                 APP_URL="http://$APP_FQDN:8080"
 
                 echo "✅ Deploy concluído!"
-                echo "📊 Banco de Dados: $DB_FQDN:5432"
                 echo "🚀 Aplicação: $APP_URL"
                 echo "🔑 Login: admin / admin123"
                 echo "📋 Para verificar logs: az container logs --resource-group $(RESOURCE_GROUP) --name $APP_CONTAINER_NAME"
