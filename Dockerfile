@@ -1,15 +1,11 @@
 FROM gradle:8.11-alpine AS build
 WORKDIR /app
 COPY . .
-RUN ./gradlew build -x test
+RUN chmod +x ./gradlew
+RUN ./gradlew build -x test --no-daemon
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-
-COPY --from=build /app/build/libs/*.jar app.jar
-
-RUN chown -R appuser:appgroup /app
-USER appuser
-
+COPY --from=build /app/build/libs/*SNAPSHOT.jar app.jar
+EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
