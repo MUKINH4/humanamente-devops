@@ -156,6 +156,7 @@ stages:
                     SPRING_DATASOURCE_URL="$(SPRING_DATASOURCE_URL)" \
                     SPRING_DATASOURCE_USERNAME="$(POSTGRES_USER)" \
                     SPRING_DATASOURCE_PASSWORD="$(POSTGRES_PASSWORD)" \
+                    JWT_SECRET="$(JWT_SECRET)" \
                     SPRING_JPA_HIBERNATE_DDL_AUTO=update \
                     SPRING_FLYWAY_ENABLED=true \
                     SPRING_FLYWAY_BASELINE_ON_MIGRATE=true \
@@ -170,7 +171,7 @@ stages:
                   --os-type Linux \
                   --dns-name-label "$APP_DNS_LABEL" \
                   --location "$(AZURE_LOCATION)" \
-                  --restart-policy never
+                  --restart-policy always
 
                 # Aguardar a aplicação iniciar
                 echo "⏳ Aguardando a aplicação iniciar..."
